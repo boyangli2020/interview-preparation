@@ -1,0 +1,632 @@
+整体结构
+
+class文件->类加载器
+
+运行时数据区：
+	方法区：	存放类信息，常量，方法信息（类元信息  方法元信息  常量池）   JDK7及以前叫永久代，JDK8开始叫原空间，使用直接内存
+	堆
+	虚拟机栈：栈由一个个栈帧组成：局部变量表，操作数栈，动态链接，方法返回地址
+	本地方法栈：在程序需要调用本地方法API时候使用到的栈  
+	PC寄存器：每个线程一份，程序计数器
+
+执行引擎（解释器，即时编译器，垃圾回收器） 本地方法接口   本地方法库
+
+指令集架构：
+	基于栈:	不需要硬件支持，java需要跨平台，指令集小，更多指令，零地址指令，性能低
+	基于寄存器：	完全依赖硬件，可以指性差	指令集大，总指令少，性能高
+
+JVM生命周期：	
+	启动：通过引导类加载器bootstrap class loader创建一个初始类initial class来完成的。
+	退出：
+		1执行结束  
+		2.异常错误  
+		3.操作系统出现错误导致终止 
+		4调用Runtime火System类的exit方法火RunTime类的halt方法
+
+
+JVM发展
+	Java1.0	Sun Classic    	只有解释器，没有即时编译器。使用即使编译外挂，解释器和解释编译器同时时解释器不工作。
+	java1.2	Exact VM		解释器和即时编译可同时运行
+	java1.3	HotSpot		Oracle>Sun->Longview 成为默认虚拟机	
+	BEA	JRocket   		后被Oracle收购	没有解释器  全部使用即时编译器
+	IBM	J9		IBM收购J9
+
+
+
+类加载器子系统
+	加载类信息存放于方法区，除了类信息，方法区中还会存放运行时常量池
+	（class 文件中的constant pool, 里面包含一些符号引用）
+	字符串字面量
+	数字常量
+
+	class文件加载到内存的类信息就是对象的模板
+	
+	类的加载过程
+		加载loading-->链接linking（验证verification-->准备preparation-->解析resolution）-->初始化Initialization
+
+		loading: 	1.通过类的全限定名获取二进制字节码文件，转化为方法区的运行时数据结构
+			2.在内存中生成代表这个类的java.lang.Class对象，作为方法去这个类的各种数据的访问入口
+			3.class文件来源
+				文件系统，网络，数据库路，jar,war,zip包，运行时计算生成（动态代理），
+				加密文件，其他文件生成（JSP）
+		linking: 	
+			verification:确保字节流包含信息符合当前虚拟机要求。包括文件格式验证，元数据验证，字节码验证，符号引用验证
+			preprare:为类变量分配内存，类变量会分配在方法区中，并设置类变量的初始值，即零值。不包含 final修饰的static, 
+				因为final在编译的时候就分配了，准备阶段会显示初始化。
+				static int a = 1	prepare: a=0 --> initial: a=1
+				final staitc a = 1       prepare: a=1
+			resolve: 	解析往往会伴随着JVM在执行完初始化后执行。
+				将常量池内的符号引用转换为直接引用的过程。
+				符号引用：一组符号来描述所引用的目标
+				直接引用：直接指向目标的指针，相对偏移量，或一个间接定位到目标的句柄。
+		initialization:
+			初始化阶段就是执行类的构造方法<clinit>()的过程。
+			此方法时javac编译器自动手机类中所有类变量的赋值动作和静态代码块中语句合并而来。
+			构造器方法中指令按语句在源文件中出现的顺序执行。
+			若该类具有父类，在子类<clinit>()执行前，父类的<clinit>()先执行。
+			虚拟机保证了一个类的<clinit>()方法在多线程下被同步加锁。
+			jclasslib bytecode/binary viewer
+
+	类加载器分类：引导类加载器（C,C++实现的），自定义类加载器（java实现的，将派生于抽象类ClassLoader的类加载器都划分为自定义加载器）
+		      扩展类加载器和系统类加载器都间接继承了抽象类ClassLoader
+
+		引导类加载器--》扩展类加载器--》系统类加载器--》自定义类加载器    包含关系  不是继承关系
+	
+		引导类加载器Bootstrap Classloader:
+			用来加载jre/lib/rt.jar,resouce.jar,sun.boot.class.path下内从，用于提供JVM自身需要的类，
+			只加载java,javax,sun等开头的类。
+			不继承自ClassLoader, 没有父加载器
+			加载扩展类和应用程序类加载器，并指定他们的父类加载器
+		
+		扩展类加载器ExtClassLoader
+			从java.ext.dirs系统属性所指定的目录中加载类库。或从jre/lib/ext/下加载类库
+			父类加载器为引导类加载器
+		
+		系统类加载器AppClassLoader
+			父类加载器为扩展类加载器
+			加载环境变量classpath或java.class.path指定的路径下的类库
+			通过ClassLoader.getSystemClassLoader可以获取到
+		
+		获取当前类的ClassLoader: 		clazz.getClassLoader()
+		获取当前线程上下文的ClassLoder:	Thread.currentThread().getContextClassLoader()
+		获取系统的ClassLoder:		lassLoader.getSystemClassLoader
+		
+	双亲委派机制：先向上委托给父类加载器加载，如果失败，则依次交由子加载器进行加载
+			
+			优势：
+			避免类的重复加载
+			保护程序安全（沙箱安全机制java.lang.String, java.lang.ShkStart），防止核心API被随意篡改
+			
+	Class对象是否相同：1.类名  2.加载器
+			如果一个类型是由用户类加载器加载的，jvm会将这个类加载器的
+			引用作为类型信息的一部分保存在方法区中。
+	
+	类的主动使用被动使用
+		主动使用
+			1.创建类实例
+			2.访问类或接口的静态变量，或者对静态变量赋值
+			3.调用类的静态方法
+			4.反射Class.forName
+			5.初始化一个类的子类
+			6.Java虚拟机启动时被标明为启动类的类
+			7.java.lang.invoke.MethodHandle动态代理实例的解析结果
+		被动使用
+			除上面7种方式外都属于被动使用，不会导致类的初始化
+			1. 通过子类引用父类的静态字段，为子类的被动使用，不会导致子类的初始化
+				sout(Dson.count)  count为Dson类父类的静态字段
+			2. E[] E = new E[10];
+			3. final static 的数据  
+			
+运行时数据区
+		PC寄存器/程序计数器：存储指向下一条指令的地址，由执行引擎读取下一条指令
+			线程独有：PC寄存器，栈，本地方法栈
+			线程共享：堆，堆外内存（方法区）
+			每个进程只有一个Runtime，对应运行时数据区
+			一个线程对应一个本地线程
+
+		
+		
+			OOM考虑区域：堆，方法区，栈，本地方法栈
+			GC考虑区域：堆，方法区
+
+			并行：宏观上多个线程同时运行
+			并发：围观行每个线程看似同时执行，其实时在CPU快速的交替轮询
+
+		虚拟机栈：
+			栈解决程序运行时如何处理数据
+			堆解决数据存储的问题
+
+			栈设成固定大小	抛出StackOverflowError
+			栈设成可动态扩容	抛出OutOfMemoryError
+			
+			-Xss 设置栈大小   -Xss1m  -Xss 1024k  -Xss1048576  linux默认1024k
+			
+			一个时间点，只有一个活动的栈帧，叫做当前栈帧，对应当前方法，当前类
+			执行引擎运行的字节码指令只针对当前栈帧
+			当前栈帧方法结束返回执行结果（正常结果或异常）给前一个栈帧，后出栈
+
+			栈帧：局部变量表，操作数栈，动态链接（指向运行时常量池的方法引用），方法返回地址，附加信息
+
+				局部变量表：存储方法参数，局部变量，是个数字，长度在编译期间就已经确定了
+
+					如果当前帧时构造方法或者实例方法创建的，那么该队下那个引用this将会存在index欸-
+					的slot处。
+		
+				操作数栈：在方法执行过程中，根据字节码指令，往栈种写入数据或者提取数据，入栈和出栈
+					JVM架构基于栈
+		
+
+				动态链接：每个栈帧都包含一个指向运行时常量池中该栈帧所属方法的引用，持有这个引用是为了支持方法调用
+					过程中的动态连接(Dynamic Linking)。在后面的方法调用中会详细介绍。
+
+				方法返回地址：存放调用 该方法的pc寄存器的值
+						当方法正常返回，就会知道调用者执行到了哪条指令
+						当方法异常退出，则查询异常表判断应该跳转到哪里
+					
+		堆   	-Xms 初始化堆大小  -Xmx 最大堆大小  eden+s1+s2+old
+			堆被所有线程共享，但TLAB区域是每个线程都有一个TLAB区域
+			几乎所有对象都被分配在对上，除了发生未发生逃逸的对象。
+			
+			jdk7及之前：新生代（Eden+s1+s2）+ 老年代 + 永久代（方法区）
+			jdk7以后：   新生代（Eden+s1+s2）+ 老年代 + 原空间（方法区）
+			-Xms -Xmx 只涉及新生代和老年代的区域。
+			-Xms = -XX:InitialHeapSize     默认物理内存/64
+			-Xmx = -XX:MaxHeapSize       默认物理内存/4
+			-XX:+PrintGCDetails 打印GC回收细节
+			超过-Xmx  报OutOfMemoryError异常
+			jstat 查看内存使用情况
+
+			为什么分新生代和老年代：针对于生命周期比较短的对象，我们就及时的进行回收就可以了。对于生命周期比较长的对象，
+			我们不应该每次GC的时候都去判断下要不要去回收它。所以就把他放到一个不去经常做判断的位置，也就是所谓的老年代。
+	
+			-XX:NewRatio=2 默认 表示新生代：老年代是 1：2
+			jinfo -flag NewRatio 6988   查看虚拟机参数
+		
+			-XX:SurvivorRatio=8 默认   表示8：1：1   Eden:s1:s2
+			但是默认实际不是８：１：１，必须加上-XX:SurvivorRatio=8配置
+			关闭自适应-XX:-UseAdaptiveSizePolicy
+
+			-Xmn设置新生代最大内存大小，８０％对象在新生代就销毁了
+
+			几乎所有的对象都是从Eden区被new出来的，但是如果new的对象特别大，直接Eden区都已经放不下了，
+			就直接放到老年代里去了。Survivor区存放的是从Eden区幸存下来的对象（通过Minor GC后）。
+			age超过15放入老年代  -XX:MaxTenuringThreshold=xxx进行设置  默认15
+			而每次YGC/Minor GC时，不光会清理Eden区的垃圾，还会清理Survivor区的垃圾。
+			但是Survivor区的垃圾回收不会主动触发，而是被动的等着Eden区满了之后才会跟着进行垃圾回收。
+
+			Minor GC/Young GC :新生代   Eden满了才会触发  S区满了不会触发
+			Major GC/Old  GC: 老年代  出现Major GC经常会伴随至少一次的Minor GC
+			Mixed GC: 新生代+老年代
+			Full GC: 新生代 + 老年代 + 方法区   调用了System.gc()  老年代空间不足   方法区空间不足
+
+			TLAB: Thread Local Allocation Buffer, 每个线程在Eden区都有一个TLAB, 为了避免分配内存出现的多线程安全问题。
+			使用TLAB作为内存分配的首选，-XX：UseTLAB 设置是否开启TLAB,  -XX:TLABWateTargetPercnet设置TLAB占用
+			Eden的空间，默认是1%。如果TLAB分配失败会通过加锁机制确保数据操作的原子性。
+
+
+				
+			逃逸分析，栈上分配：如果一个对象的范围就是在一个方法内部，那么就认为这个对象没有逃逸出这个方法，
+					所以智慧将这个对象new在栈中，而不是堆中。对象在栈中，只会被当前线程使用，
+					随着出栈而被销毁，这样就不涉及到GC的问题。
+					-XX:+DoEscapeAnalysis 显示开启逃逸分析
+					-XX:+PrintEscapeAnalyis  查看逃逸分析筛选结果
+			同步省略：在动态编译同步块时，JIT借助逃逸分析来判断同步块所使用的锁对象是否只能被一个线程访问，
+				儿没有发布到其他线程，如果没有，就会取消同步，叫做同步省略或锁消除。
+
+			标量替换：标量是基本数据结构不能在做拆分，聚合量是对象。
+				在经过逃逸分析后，发现一个对象没有逃逸，就被替换成两个标量。
+				class Point(  int x;  int y)
+			-XX:+EliminateAllcations  开启标量替换
+			JDK7有了逃逸分析，要以分析只有在服务器段才能开启有效。
+	
+	方法区
+		栈内对象引用--》对内对象（存在到对象类型数据的指针）--》方法区类信息
+		可固定大小，也可扩展
+		满了报OutOfMemoryError
+		JDK7
+			-XX:PerSize设置永久代初始分配空间  默认20.75	
+			-XX:MaxPerSize可以设置永久代的上线  默认 32位64M   64位82M
+		JDK8   JRocket   J9  都是在本地内存内实现的原空间
+			-XX:MetaspaceSize   默认21M   满了触发FULL GC, 
+					并卸载没用类 根据释放情况 调整水位线MaxMetaspaceSize
+					设置过低高水位线回经常调整，FULL GC经常调用，建议设置高值
+			-XX:MaxMetaspaceSize   默认值-1   没有限制
+
+		包含类信息，域信息，方法信息，常量，静态变量（非final），便是后的代码缓存等
+			静态变量和类关联在一起，随着类的加载而加载
+		常量池种包含：数量值，字符串值，类引用，字段引用，方法引用
+
+		JDK1.6及以前  静态变量和字符串常量池（放在方法区的运行时常量池种）放在方法区，方法区叫永久代
+		JDK1.7           静态变量和字符串常量池放在堆中   方法区叫永久代
+		JDK1.8           静态变量和字符串常量池放在堆中    方法区直接放到了本地内存 方法区叫原空间
+				永久代移动到本地内存原因是没有上线，上线是系统内存上线
+				字符串常量池移动到堆是因为可以频繁GC参加回收，放在原空间回收不及时占地方
+				JDK7及以后的版本，HotSpot虚拟机选择把静态变量与Class对象放在一起，
+				而且都是放在Java的对空间中。
+		方法区垃圾回收主要回收常量池种废弃的常量和不在使用的类型
+		方法区内常量池主要存放两大类常量：字面量（类似于常量）和符号引用（1.类和接口名，字段名，方法名和他们的描述符）
+						堆常量池的垃圾回收就是没有任何地方引用就可以回收
+						类回收条件
+							1.类的所有实例已经被回收
+							2.加载该类的加载器已经被回收
+							3.类对应的Class对象没有任何地方被引用，无法在任何地方通过反射访问该类的方法
+
+	对象问题
+			对象创建过程
+				1. 加载类对象
+				2. 为对象分配内存    规整使用指针碰撞  不规整使用空闲列表
+				3. 初始化分配到的空间  所有属性默认初始化 --》
+				4. 设置对象头  hashcode  gc信息  锁信息
+				5. 显示初始化/代码块种初始化  谁在前谁先执行  之后是构造器初始化
+
+			对象的内存布局
+				对象头
+					运行时元数据 markword	
+							hashcode
+							gc分代年龄
+							锁状态标志
+							线程持有的锁
+							偏向线程ID
+							偏向时间戳
+					类型指针	 指向InstanceClass
+				实例数据
+					相同宽度字段分配在一起， 父类定义的变量出现在子类之前
+				对齐填充
+					占位符
+
+			对象访问方式
+				句柄访问  对象移动不需要该栈种指针   该句柄种指针即可
+				直接指针  比句柄省空间   访问速度块
+			
+			
+
+	执行引擎		将字节码指令解析/编译为对应平台上的本地机器指令（后端编译器）
+		
+			解释器：对字节码采用逐行解释的方式执行
+			JIT编译器：将源代码直接编译成本地机器平台相关的机器语言
+			AOT编译器：直接将.java编译成机器指令
+	
+			热点代码：一个被多次调用的方法，或者一个方法体内部循环次数较多的循环体
+			这种 编译方式发生在方法执行过程中，因此被称之为栈上替换 OSR on stack replacement
+
+			热点探测：JVM采用基于计数器的热点探测。为每一个方法建立2个不同类型的计数器
+				方法调用计数器：统计方法被调用次数
+				回边计数器：统计循环体执行的循环次数
+			阈值  client模式默认  1500次   Server模式默认   10000次  超过阈值提交给JIT
+			-XX:CompileThreshold
+
+			方法条用计数器热度衰减：方法调用次数有时间限制，没有达到计数器就会衰减，这个时间叫做半衰周期
+			-XX:-UseCounterDecay  关闭热度衰减
+			-XX:CounterHalfLifeTiem  设置半衰周期，时间是秒
+
+			热度衰减动作是在进行垃圾回收时顺便进行的
+
+			编译模式：
+				-Xint: 完全解释器
+				-Xcomp:完全即时编译模式
+				-Xmixed:混合
+
+			JIT分类：
+				-client: C1 JIT编译器
+					方法内联：将引用的函数代码编译到引用点处，减少栈帧生成和参数传递
+					去虚拟化：堆唯一的实现类进行内联
+					冗余消除：在运行期间把一些不会执行的代码折叠掉
+				-server:C2 JIT编译器
+					标量替换：标量值代替聚合对象的属性值
+					栈上分配：未发生逃逸对象分配在堆上
+					同步消除
+			分层编译策略：不开启性能监控只触发C1, 开启性能监控触发C2   JDK7后默认会开启分层编译,C1C2同时工作
+					JDK10加入Graal即时编译器  测试阶段
+
+
+	String		
+			jdk1.8  char[]   jdk1.9  byte[]
+			一个char  2个字节，一个拉丁文字母占一个char也就是一个字节，有一个字节是空的，1.9的改动节省了空间
+			
+			String不可变性
+				堆字符串重新赋值时，需要重新指定内存区域赋值，不能把原有value进行赋值
+				字符串进行连接时，需要重新指定内存区域赋值，不能把原有value进行赋值
+				String调用replace方法时，需要重新指定内存区域赋值，不能把原有value进行赋值
+			通过字面量方式赋值，字符串的值存在字符串常量池中
+			字符串常量池中值不容许重复
+			字符串常量池就是一个Hashtable  StringTable
+			jdk6中默认长度1009  造成冲突后链表长  intern方法慢
+			jdk7中默认长度60013  无下限
+			jdk7中默认长度60013	 1009是设置的下限
+			-XX:StringTableSize
+			String的intern方法的含义是如果当前这个字符串在字符串常量池中没有，就将这个字符串生成到字符串常量池中，
+			而判断在字符串常量池中有没有就会去比较，如果碰撞很多的话效率就会比较慢。
+			intern方法如果常量池有，返回常量池中引用。
+				如果没有  	1.6  拷贝到字符串常量池
+					1.7  不会拷贝，而是生成一个对该字符串的引用存在字符串常量池
+						因为如果只存放引用只占用四个字节，如果放一个字符串，如果字符串很长，那么占用空间比较大。
+						也就是为了节省空间。
+			字符串常量池中String对象如果不被使用了也可以被GC
+			JDK7之前字符串常量池在永久代，因为永久代的空间一般不是很大，
+			如果经常使用String.intern会造成永久代内存不够用，JDK7及以后将字符串常量池放在了堆中，
+			我们就可以考虑使用String.intern()
+
+			字符串拼接操作
+				1.常量与常量的拼接结果在常量池，原理是编译期优化
+				2.常量池中不会存在相同内容常量
+				3.只要其中一个是变量，结果都在堆中，变量的拼接原理是StringBuilder
+					new stringbuider,   append,  tostring
+				4.拼接的结果调用intern方法，返回常量池中地址
+
+			拼接操作和append的区别
+				循环中使用拼接每次都会new Stringbuilder和toString, 所以还是append方式比较好
+			
+
+垃圾回收
+			针对区域：堆和方法区
+
+			判断对象是否存活算法：引用计数算法（无法处理循环引用）  和  可达性分析算法/跟搜索算法
+
+			GC Roots: 跟集合就是一组必须活跃的引用集合
+			可达性分析算法是以GC Roots为起始点，按照从上至下的方式搜索被根对象集合所连接的目标对象是否可达
+			搜索所经过的路径叫做引用链
+ 
+			GC Roots包括一下几类元素：
+				1.  虚拟机栈中引用的对象
+				2.  本地方法栈引用的对象
+				3.  方法区中类静态属性引用的对象
+				4.  方法区中常量引用的对象
+				5.  所有被同步锁synchronized持有的对象
+				6.  虚拟机内部引用（Class对象，异常对象，系统类加载器）
+				7.  根据当前回收内存区域的不同，比如新生代的回收，老年的也是GC Roots
+			可达性分析算需要在快照中进行，所以需要STW.
+
+			对象销毁前自定义逻辑调用Object的空方法finalize()
+			对象三种状态
+				1.可触及的  从GC Roots可以到达这个对象
+				2.可复活的  所有引用被释放，但对象可能在finalize中复活
+				3.不可触及的 finalize已经被调用且没有复活，finalize只能被调用一次
+					对象只有在不可触及状态才可以被回收
+			
+
+			垃圾回收算法：   标记清除算法   复制算法  标记压缩算法  分代收集算法   增量收集算法   分区算法
+				1.标记清除算法: 可达在header中做标记，如果没标记视为垃圾，维护空闲列表。速度中等
+				2.复制算法： 将对象空间分为两份，每次只是用其中一块，回首时将正在使用的活着的对象复制到另一侧，
+					删除本侧。回收后空间连续，浪费内存，如果垃圾很多复制量较少还行，如果垃圾少
+					复制量很大，影响性能，最快，适用于年轻代，垃圾比较多，复制的少
+				3.标记压缩算法：解决碎片问题，虚拟移动对象，需要调整引用地址。最慢，适用于老年代，垃圾少。
+				4.分代收集算法：不同生命周期的对象可以采用不同的收集方式，以便提高效率。	
+				5.增量收集算法：每次垃圾收集线程只收集一小片区域的内存空间，接着切换到应用线程，
+						依次反复，直到垃圾收集完成。基础仍是标记清除和复制算法。减少了停顿时间，
+						回收设计多次线程上下文切换，造成回收总体成本提高，造成系统吞吐量下降。
+				6.分区算法：堆空间越大，一次GC时间就越长，STW就越长，为了控制GC产生的停顿时间，将
+						一块大的内存区域分成多个小块，根据目标停顿时间每次回收若干小区域，从而
+						控制GC带来的停顿。
+
+			System.gc()仅仅是提醒JVM希望进行一次垃圾回收，但是不一定真的调用。因为System.gc有一个附带的免责声明。、
+			System.gc()  Runtime.getRuntime().gc(); 都是触发FULL GC.
+			
+			OOM:没有空闲内存，垃圾回收也不提供更多内存
+			内存泄漏：对象程序不会再用，但是GC不能回收他们	
+			
+			引用分类：
+				强引用：不释放不回收。  
+				软引用 ： 内存不足即回收，即使引用仍然存在。  通常用来实现内存敏感的缓存  SoftReference
+				弱引用 ：发现即回收，即使引用仍然存在。下次垃圾收集必回收。WeakReference
+				虚引用：只为了做对象跟踪。资源释放可以通过虚引用执行记录  PhantomReference
+				
+		
+
+调优	 		XX:GCTimeRatio=n, 是程序运行时间比上垃圾回收时间的比例，n越大，吞吐量越高。
+			jps:显示指定系统内所有虚拟机进程
+				-q  仅仅显示虚拟机ID
+				-l   输出应用程序朱磊的全类名或jar包
+				-m 输出输出虚拟机进程启动时传递给主类main的参数
+				-v   列出虚拟机进程启动时的jvm参数
+			
+			jstat:监控虚拟机各种运行状态信息，类装载，内存，垃圾收集，JIT编译等运行数据
+				-class		jstat -class 9000  类装载卸载数量，总空间，类装载所消耗的时间
+				-inverval   	jstat -class 9000 1000  一秒输出一次
+				-count      	jstat -class 9000 1000 10   一共打印十次
+				-t            		jstat -class -t 9000   程序从刚启动到现在跑了多少秒
+						jstat -class -t 9000 1000 10  
+				-gc  		jstat -gc -t 14024 1000 20 查看gc情况次数时间和各区占比
+							可以通过-t的时间范围和gct算出gc占比
+							隔一段时间取区间OU 最小值  上升趋势可能有内存泄漏
+				-gccause                  jstat -gccause 10288 1000 10 查看最后一次GC的原因
+				-h            		jstat -gc -t  h3 9000 1000 10  每三行打印一次表头
+				-compiler		jstat -compiler 9000  显示JIT编译过的方法耗时等
+				-printcompilation	jstat -printcompilation 输出已经被JIT编译的方法
+
+
+			jinfo: 实时查看和修改JVM配置参数
+				jinfo -flag name  		jinfo -flag UseParallelGC 3540
+				jinfo -flag +/-name		jinfo -flag +PrintGCDetails 3540
+				jinfo -flag name = value	jinfo -flag MaxHeapFreeRatio=90 3540  		
+				java -XX:+PrintFlagsFinal	查看所有JVM参数的最终值
+		
+			jmap: 导出内存映像文件&内存使用情况
+				jmap -dump:format=b,file=d:\1.hprof 23188
+				jmap -dump:live,format=b,file=d:\1.hprof 23188
+				-XX:+HeapDumpOnOutOfMemoryError
+				-XX:HeapDumpPath 指定堆快照的保存位置
+
+				jmap -heap 22520 > a.txt  显示堆内存信息
+				jmap -histo 22520 > b.txt  对象统计信息
+
+			jhat d:\3.hprof  http://localhost:7000   JDK自带分析dump文件工具
+			
+			jstack 跟踪jvm中线程快照
+				jstack 8044
+
+
+			工具：jconsole  jvisualvm  jprofiler  mat
+
+
+			浅堆大小shallowHeap，深堆大小RetainedHeap  对象的保留及所有对象浅堆大小之和，实际大小
+
+
+			阿尔萨斯：	dashboard	当前系统实施数据面板   dashboard -i 500 每500ms打印一次
+					thread 		查看当前jvm线程堆栈信息  thread -n 2 cpu最高两个
+					jvm		查看当前jvm信息
+					sysprop		查看和修改jvm属性
+					sysenv 		查看jvm的环境变量
+					jad		jad java.lang.String
+					
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+-Xss 设置栈大小   -Xss1m  -Xss 1024k  -Xss1048576  linux默认1024k
+-Xms 初始化堆大小  -Xmx 最大堆大小
+-XX:+PrintGCDetails 打印GC回收细节
+-XX:NewRatio=2 默认 表示新生代：老年代是 1：2
+-XX:SurvivorRatio=8 默认   表示8：1：1   Eden:s1:s2	关闭自适应-XX:-UseAdaptiveSizePolicy
+-XX:MaxTenuringThreshold=xxx进行设置  默认15
+-XX：UseTLAB
+-XX:TLABWateTargetPercnet
+-XX:+PrintFlagsInitial:查看所有参数默认初始化值
+-XX:+PrintFlagsFinal: 查看所有参数的最终值
+-XX:+DoEscapeAnalysis 显示开启逃逸分析
+-XX:+PrintEscapeAnalyis  查看逃逸分析筛选结果
+-XX:+EliminateAllcations  开启标量替换
+-XX:PerSize设置永久代初始分配空间  默认20.75	
+-XX:MaxPerSize可以设置永久代的上线  默认 32位64M   64位82M
+-XX:MetaspaceSize   默认21M
+-XX:MaxMetaspaceSize   默认值-1   没有限制
+-XX:CompileThreshold  热点探测即时编译阈值
+-XX:-UseCounterDecay  关闭热度衰减
+-XX:CounterHalfLifeTiem  设置半衰周期，时间是秒
+-XX:StringTableSize  字符串常量池长度
+-XX:GCTimeRatio=n, 是程序运行时间比上垃圾回收时间的比例，n越大，吞吐量越高。
+-XX:+HeapDumpOnOutOfMemoryError
+-XX:HeapDumpPath 指定堆快照的保存位置
+
+工具：MAT Memory Analyzer,   jvisualvm,  jprofiler
+
+问题：
+动态链接
+分派
+栈  堆内存给多少
+
+
+
+
+
+
+
+
+	
+				
+			
+				
+
+
+
+
+
+
+	
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

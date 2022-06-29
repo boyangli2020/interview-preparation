@@ -1,0 +1,225 @@
+索引存放位置：/data/库名/***
+
+MYISAM和INNODB的区别：
+INNODB索引存在一个文件中 .idb  聚集索引
+MYISAM存在两个文件  .MYI  .MYD  非聚集索引
+INNODB不支持全文索引，MYISAM支持
+INNODB支持行锁，表锁， MYSIAM之支持表锁
+MYISAM B+树索引的叶子节点存放的是行数据的行标识符,可以定位到物理位置
+INNODB B+树索引的叶子节点存放的是索引键值对
+MYSAM不支持事务  
+INNODB支持事务
+
+索引的分类：
+1.主键索引:  主键自带索引效果
+2.普通索引：为普通列创建的索引
+3.唯一索引：列中数据唯一，比普通索引性能好，因为值是唯一的
+4.组合索引/联合索引：为多个字段创建索引，最左前缀法则
+5.全文索引
+
+普通索引
+create index 索引名称 on 表名（列名）
+create index idx_name on employees(name)
+
+唯一索引
+create unique index 索引名称 on 表名（列名）
+craete unique index idx_unique_name on employees(name)
+
+联合索引
+create index 索引名称 on 表名（列1，列2，列3）
+create index idx_name_age_position on employees(name, age, position)
+
+B树
+一个节点16K, 索引是键值对，键8B, 值1KB, 加起来1032B, 一个节点存16*1024/1032=15个索引
+B+树
+非叶子节点只存键，不存值，键8B, 指针域6B，一共14B, 16*1024/14 = 1170， 
+一个节点能存1170个非叶子节点，存15个叶子节点。
+叶子节点存在指针，提高了区间访问的效率，一个区间放15个索引键值对，不用每一次都从上往下找。
+
+
+为什么非主键索引的叶子节点存放的数据是主键值？
+主键索引的叶子节点回存放整条数据
+非主键索引的叶子节点只存放数据的主键值
+省空间，数据更改时不需要改索引
+
+为什么INNODB表必须创建主键？
+不创建，MYSQL优化器会给一个虚拟主键，影响性能
+
+为什么使用主键推荐使用整形和自增？
+整形好比较，字符串需要编码后再比较
+自增避免更多自旋
+
+explain    
+
+id,table, select_type, type, possible keys, key, key_len, rows, extra
+
+select_type列  查询类型
+1.simple: 简单的select语句，查询中不包含子查询和union
+2.primary: 外部的主查询，说明查询内部有子查询或者union
+3.derived: 在from后面进行的子查询，会产生衍生表  select * from (select * from t1 where a = 1)
+4.subquery: 在from前面进行的子查询， 在select 或者where 列中包含的子查询（出了from子句中包含的子查询）
+5.union: 进行的联合查询，若第二个select出现在UNION之后， 就会被标记为UNION；union连接的两个select查询，
+	第一个查询时primary, 除了第一个表外，第二个以后的表select_type都是union. 如select * from t1 union select * from t1; 
+	第一个select时Primary,第二个时Union. 若UNION包含在FROM查询的字句当中，则外层SElECT会被标记为DERIVED；
+6.union result: 从UNION表获取结果的SELECT。
+
+id列 id不同谁大谁先执行，id相同，谁在上面谁先执行。
+
+table列   查询的表
+
+type列  查询所需数据使用的扫描方式  判断sql性能
+null > system > const > eq_ref > ref > range > index > all
+
+null: 不用访问表或者索引就直接能得到结果   select 1 from dual where 1;
+system: 系统表，少量数据，system 是 const 类型的特例, 当查询的表只有一行的情况下使用 system.
+const: 常量，当 MySQL 对查询某部分进行优化, 并转换为一个常量时, 使用这些类型访问. 
+	如将主键置于 where 列表中, MySQL 就能将该查询转换为一个常量，直接从索引中拿数据
+req_ref:  唯一索引扫描. 在联表查询中使用 primary key 或者 unique key 作为关联条件.
+	select * from tb_book_author left join tb_book on tb_book_author.book_id = tb_book.id
+	因为是left join, 所以对于左表tb_book_author的每条记录，右表tb_book都有唯一的一条和其匹配，
+	因为tb_book.id是主键索引，值在表中是唯一的。
+ref: 非唯一索引扫描，返回匹配某个单独值的行，可能有多个结果。
+	select * from tb_book where name = 'book1'
+	select book_id from tb_book left join tb_book_author on tb_book.id = tb_book_author.book_id
+	其中tb_book_author.book_id是tb_book_author的联合索引列
+	对于tb_book的每条记录，tb_book_author都可能有多条记录与之匹配。
+range: 范围扫描  select * from tb_author where id > 1, between , in, >, <
+index: 全索引树扫描，FULL INDEX SCAN, 遍历整个索引树来匹配要
+	select title from film，title 是索引包含的列, 所以只要全扫描 title 索引即可, 直接使用索引树查找数据.
+all: 全表扫描，没有走索引，进行全表扫描   select * from film where rating ='G'; rating没有索引
+
+possible keys列：一次查询可能会用到的索引
+
+key列：实际用到的索引
+
+rows列：sql语句可能要查询的数据条数
+
+key_len列  键的长度，通过这一列可以推断命中联合索引中的哪几列
+	char(n)  n字节长度
+	varchar(n)  3n + 2 字节长度
+	int 4字节
+
+extra: 重要额外信息
+Using index 使用了覆盖索引(查询的列被所建的索引覆盖)，查询所有数据字段都是索引列，
+	直接从索引取数据，不需要查表
+Using index condition: 查询列没有完全被索引覆盖，但是where条件中使用了普通索引
+Using where 使用了普通索引做查询条件
+Using temporary: 会创建临时表，性能差，比如在没有索引的列上执行去重操作, 常见于order by, group by
+Using filesort: 排序使用磁盘来完成，也可能借助内存，性能查  设计单路排序和双路排序
+	无法利用索引完成的排序称作文件排序
+	select * from tb_author order by name, name没索引
+	select col1 from t1 where col1 = ac order by col3,  索引断了，order by 没吃到索引	
+	select col1 from t1 where col1 = ac order by col2, col3
+Select tables optimied away: 直接在索引列上使用聚合函数，因为不需要操作表
+	select min(id) from tb_book
+Using join buffer: 使用了连接缓存
+impossible where: where的值永远是false, select * from t1 where name = 1 and name =3
+
+
+索引失效：
+1. 最左前缀
+2. 在所以上做计算，函数，类型转换
+	date(hire_time) = '2022-04-22'
+	hiretime > '2022-04-22 00:00:00' and hiretime<
+3. !=, <>导致失效
+4. is null, is not null导致失效
+5. like %xx导致失效
+6. 字符串不加单引号导致失效
+7. or in 导致失效
+8. 范围查询优化
+	where age>=1 and age<=2000
+	where age>=1 and age<=1000
+	where age>=1001 and age<=2000
+
+
+sql优化
+1.trace工具 计算cost，有的走了索引还不如不走索引
+	select * from information_schema.OPTIMIZER_TRACE
+2. order by 排序优化
+	使用最左前缀法则
+3. group by 优化
+	group by是先排序后分组  使用最左前缀法则
+4. 文件排序的原理
+	max_length_for_sort_data 默认1024
+	单路排序
+		将数据放入sort_buffer进行排序
+	双路排序
+		将数据的排序字段和主键字段放入缓冲区排序后，将主键字段做一次回表查询
+5. 分页查询优化
+	select * from t1 limit 10000,10  会获取10010条数据，丢弃掉前面10000条
+	主键连续情况下
+		select * from t1 where id>10000, limit 10   如果有删除数据就不可以这样做
+	主键不连续情况下
+		select * from employees limit 10000, 10  
+		select * from employees a inner join (select id from employees limit 10000, 10) b on a.id = b.id
+6. join优化
+	尽量建立两表关联字段按的索引，字段类型长度要一样避免失效，使用nlj。
+		nlj 嵌套循环算法：先小表后大表，小表驱动大表  mysql优化器决定, 小表ALL, 大表ref
+		bnlj 块嵌套循环算法: 先将小表放入join buffer, 然后去大表扫，小表all, 大表all
+7. in exists优化
+	A>B
+		select * from A where id in (select id from b)
+		for(select id from b) {
+		  select * from A 
+		}		
+	A<B
+		select * from A where exists (select 1 from B where b.id = a.id)
+8.count优化
+	去缓存加1，每天同步到数据库
+	
+
+表锁
+	lock table 表明  read/wirte    lock table tb_book read;
+	show open tables; 查看当前会话堆所有表的上锁情况
+	unlock tables;  释放当前会话的所有锁
+
+读锁：其他任务可以进行读，但是不可以进行写
+写锁：其他任务不能进行读和写	
+
+行锁         在并发事务里，每个事务的增删改操作相当于是上了行锁
+	update tb_book set name='231' where id=8;  
+	select * from tb_book where id=5 for update;
+
+autocommit=0			当前情况下事务的状态是自动开启手动提交。		
+若参数autocommit=1（系统默认值）	①手动开启手动提交：当用户执行start transaction命令时（事务初始化），
+				一个事务开启，当用户执行commit命令时当前事务提交。从用户执行
+				start transaction命令到用户执行commit命令之间的一系列操作为一个完整
+				的事务周期。若不执行commit命令，系统则默认事务回滚。
+				②自动开启自动提交：如果用户在当前情况下（参数autocommit=1）
+				未执行start transaction命令而对数据库进行了操作，系统则默认用户对数
+				据库的每一个操作为一个孤立的事务，也就是说用户每进行一次操作系都会
+				即时提交或者即时回滚。这种情况下用户的每一个操作都是一个完整的事务周期。
+					
+	开启事务后，如果增删改操作没有commit,就会对行上锁，commit后才能释放锁。
+	事务和锁的关系，事务提交了，锁才能释放掉。
+
+
+事务隔离级别：
+	脏读：读取到其他事务未提交的数据
+	不可重复读：并发更新时，另一个事务前后查询到的数据不一致。
+	幻读：一次事务中前后数据量发生变化，用户产生不可预料的问题。
+		并发新增，删除这种会产生数据量变化的操作时，另一个事务
+		前后查询相同数据时不符合预期。
+
+快照读
+当前读
+ReadView
+Repeatable read可以解决幻读问题，但是当两次快照读间存在当前读的情况会导致幻读
+间隙锁
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

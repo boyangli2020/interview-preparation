@@ -1,0 +1,103 @@
+----Concurrent 并发：任务调度器将CPU时间片轮流分给线程，线程轮流使用CPU的现象称之为并发。
+--------单核下，线程其实是串行执行的。
+
+isInterrupted() 不会清除打断标记
+interrupted（）会清除打断标记，park的线程被interupt之后会继续运行，但是再park是park不住的，可以用interrupted()清除打断标记来解决。
+interrupt() 
+如果被打断线程正在sleep,wait,join, 会导致被打断的线程抛出InterruptedException, 
+并清除打断标记。如果打断的正在运行的线程，则会设置打断标记。park的线程被打断，也会设置打断标记。
+getState() 6种。NEW, RANNABLE（可运行态，运行状态，阻塞状态）, BLOCKED, WAITING, TIMED_WAITING, TERMINATED. 操作系统五个状态：初始态，可运行态，运行状态，阻塞状态，终止状态
+t1.join(), 在哪个线程上调的，就是在调用的线程上等待t1的结束。
+stop() 方法会终止一个线程，如果有所资源，则无法释放
+setDeamon(true)
+
+两阶段终止-interrupt, 在线程t1种如何优雅的终止t2线程。适用于定时任务，提供打断来终止程序。一般stop方法最好用两阶段提交方式来解决。
+
+守护线程：只要其他非守护线程运行结束，即使守护线程的代码没有执行完，也会强制结束。
+
+临界区：一段代码内如果存在对共享资源的多线程读写操作，称这段代码为临界区
+竞态条件：多个线程在临界区内执行，造成指令容易叫做，成为发生了竞太条件。
+
+为了避免临界区的竞态条件发生，使用阻塞时方案（synchronized, lock）, 非阻塞式的（原子变量）
+
+synchronized（用对象锁保证临界区代码的原子性） Monitor(WaitSet, Entrylist, Owner), 属于互斥，非公平锁, 可重入锁。
+
+StringBuilder线程安全。
+
+64位系统 
+Object Header（64） = MarkWord（32） + ClassWord（32）
+MarkWord:
+hashcode25, age4, biased_lock1(0), status2(01)							Normal
+thread23, epoch2, age4, biased_lock1(1), status2(01)					Biased Locked
+ptr_to_lock_record30, status2(00)										Lightweight Locked
+ptr_to_heavyweight_monitor30, status2(01->10)							Heavyweight Locked
+空(30) + status2(11)													Marked for GC
+
+轻量级锁
+重量级锁
+自旋锁（多核CPU下自旋有用）
+偏向锁
+
+顺序：启用偏向锁时优先使用偏向锁，如果其他线程用了这把锁，就会撤销偏向锁，编程轻量级锁，如果轻量级锁加了之后有竞争，就会发生锁膨胀，编程重量级锁。
+
+-XX:BiasedLockingStartupDelay = 0 取消偏向锁延迟
+-XX:-UseBiasedLocking 禁用偏向锁
+
+如果调用一个对象的hashcode方法，会禁用这个对象的偏向锁，后续给这个对象上synchronized, 会直接加入轻量级锁，因为对象头MarkWord如果存了hashcode就没地方存偏向锁的线程号了。
+
+锁消除：当锁对象没有发生逃逸，只被一个线程锁持有，jvm即时编译器进行锁销除。
+
+
+wait notify原理即正确姿势
+synchronized(lock) {
+
+	while(条件不成立) {
+		lock.wait();
+	}
+	
+	//干活
+}
+
+synchronized(lock) {
+	lock.notifyAll();
+}
+
+同步模式之：保护性暂停 	GardedObject
+异步模式之：生产者/消费者 -- 消息队列 BlockingQueue
+
+LockSupport.park();
+LockSupport.unpark();
+
+Reentrantlock:
+	获取锁的过程中可被打断,避免死等： 
+		被动可打断：try{lock.lockInterruptibly()}catch(InterruptedException e){} 主动可打断：lock.tryLock()也支持InterruptedException; lock.tryLock(timeout, TimeUnit)
+		哲学家问题，先获取左手筷子，如果获取到了获取右手筷子，如果没获取到就释放掉左手筷子的锁。
+	可设置超时时间  
+		lock.tryLock(timeout, TimeUnit)
+	支持多条件,避免虚假唤醒。		
+		
+	可以设置为公平锁
+		公平锁本意是解决饥饿问题。一般不会去设置公平锁，因为会降低并发度。
+	
+Reentrantlock lock = new Reentrantlock();
+Condition condition1 = lock.newCondition();
+Condition condition2 = lock.newCondition();
+
+lock.lock();
+condition1.await();
+condition1.signal();
+condition1.signalAll();
+
+
+
+
+
+
+
+
+
+
+
+
+
+

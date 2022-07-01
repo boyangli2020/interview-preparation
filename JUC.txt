@@ -89,14 +89,71 @@ condition1.signal();
 condition1.signalAll();
 
 
+线程池
+ExecutorService接口
+ScheduledExecutorService接口
+ThreadPollExecutor
+ScheduledThreadPollExecutor
+
+corePoolSize: 核心线程数   核心线程一直存在，不会销毁。一开始线程池里面没有核心线程，核心线程是懒加载。
+maximumPoolSize: 最大线程数  maximumPoolSize-corePoolSize等于救急线程数，当核心线程满了，就放到阻塞队列，阻塞队列满了就放到救急线程，救济线程满了就执行拒绝策略。
+keepAliveTime: 生存时间，针对救急线程。救急线程执行任务结束后，等待一段时间，如果没有新任务到来就会销毁。
+unit: 时间单位，针对救急线程
+workQueue: 阻塞队列，如果是无界队列，就没有救急线程，而是等着核心线程取任务。
+threadFactory: 县城工厂，可以我i线程创建时起个名字
+hanlder: 拒绝策略。
+
+jdk提供的救急策略：
+AbortPolicy: 让调用者抛出RejectedExecutionException异常，这是默认策略。
+CallerRunsPolicy: 让调用者运行任务。
+DiscardPolicy: 放弃本次任务
+DiscardOldestPolicy 放弃队列中最早的任务，本人无取而代之。
+
+newFixedThreadPool(int  nThreads): 
+	new ThreadPoolExecutor(nThreads, nThreads, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<Runnable>())
+	LinkedBlockingQueue没有传数字，所以是无界队列，没有临时线程，所以不需要超时时间。
+	固定大小线程池，没有救急线程。
+	适用于任务量相对比较固定，相对比较耗时的任务。
+	有可能产生饥饿问题，比如nThreads是2，员工A点餐等待做好菜后上菜，员工B做菜，这时候两个A类型员工占据了线程池，发现没人做菜了，一直等着。
+
+newCachedThreadPool() 
+	new ThreadPoolExecutor(0, Integer.MAX_VALUE, 60L, TimeUnit.SECONDS, new SynchronousQueue<Runnable>())
+	SynchronousQueue: 没有容量，没有线程来取是放不进去的。
+	全是救急线程，不限救急线程的容量。
+	适用于任务数比较密集，每个人物执行时间较短的情况，因为如果任务执行时间长，来一个任务启动一个线程，，会造成线程总数太多，无法控制。
+
+newSingleTheradExecutor()
+	new FinalizableDelegatedExecutorService (
+		new ThreadPoolExecutor(1,1, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<Runnable>())
+	)
+	单线程线程池，无救急线程，无界队列。
+	适用于希望多个任务排队执行。
+	和单线程有什么区别？线程池中的线程如果出现异常会新建一个线程继续执行其他任务，这个是所有线程池都会这样做。
+	和FixedThreadPool有什么区别? FinalizableDelegatedExecutorService是一个包装类对象，对外只暴露ExecutorService接口中的方法。
+
+提交任务方法：
+	void 		execute(Runnable runnable)
+	Future<T> 	submit(Callable<T> task)
+	List<Future<T>> 	invokeAll(Collection<Callable<T>> tasks)
+	T 		invokeAny(Collection<Callable<T>> tasks)
+	
+	submit方法的原理是使用了保护性暂停的GuardedObject（get方法wait, set方法notifyAll）, 从一个线程中（主线程）接受另一个线程（线程池中线程）执行的结果。
+	Future是一个接口，实现类是FutureTask, 这样可以实现在主线程中获取线程池中方法的返回结果。
 
 
+创建多少线程合适？过少不能充分利用系统资源，还容易产生饥饿现象，过大会导致更多的线程上下文切换，占用更多内存。
+	CPU密集型：CPU核数+1，保证当前线程由于页缺失故障（操作系统）或其他原因导致暂停时，额外的这个线程能顶上去，保证CPU时钟周期不被浪费。
+	I/O密集型：因为有些线程在做I/O, 线程是阻塞的，那么就可以多创建一些线程，当有些线程阻塞了，可以切换到有需要CPU的线程去
+			工作计算，这样就可以充分利用CPU。web应用程序就是I/O密集型运算。
+		计算公式：线程数 = 核数 * 期望CPU利用率 * （总时间/CPU计算时间）       总时间：CPU计算时间+I/O时间
 
 
+Timer的缺点：所有任务都是一个线程调度的，因此所有人物都是串行执行的，同一时间只能由一个任务在执行。
+		Timer是一种定时器工具，用来在一个后台线程计划执行指定任务。它可以计划执行一个任务一次或反复多次。一个Timer对象对应一个后台线程。
 
 
-
-
+Tomcat NIO Endpoint:
+	LimitLatch负责限流 --> acceptor死循环建立socket连接 --> poller死循环监听socket channel中的读写事件 --> 数据交给Executor线程池中的worker去处理
 
 
 

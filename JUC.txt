@@ -156,5 +156,58 @@ Tomcat NIO Endpoint:
 	LimitLatch负责限流 --> acceptor死循环建立socket连接 --> poller死循环监听socket channel中的读写事件 --> 数据交给Executor线程池中的worker去处理
 
 
+AQS: AbstractQueuedSynchronizer, 是阻塞式锁和相关同步器工具的框架，由子类去实现。
+
+	用state(在AQS中声明为volatile的成员变量)标识资源的状态子类需要定义如何维护这个状态，控制如何获取锁和释放锁，可以使用AQS提供的compareAndSetState()方法来用CAS方式更新state属性。
+	提供基于FIFO的等待队列，类似于Monitor的Entrylist
+	多条件变量来实现等待和唤醒机制，类似于Monitor的WaitSet.
+
+	子类主要实现的方法：
+		tryAcquire
+			AQS中acquire方法使用tryAcquire方式尝试加锁，如果不成功放入阻塞队列。
+			
+			if(!tryAcquire(arg)) {
+				//入队，可以选择阻塞当前线程, 可以使用Park/Unpark
+			}
+		
+		tryRelease
+			AQS中release方法使用tryRelease方法尝试解锁，如果成功回去唤醒队列中正在等待锁的线程。
+			
+			if(tryRelease(arg)) {
+				//让阻塞线程恢复运行, 可以使用Park/Unpark
+			}
+		tryAcquireShared
+		tryReleaseShared
+		isHeldExclusively
 
 
+ReentrantLock继承了Lock接口，并内部维护类一个同步器Sync继承AbstractQueuedSynchronizer，Sync是一个抽象类，有两个实现，一个是非公平的一个是公平的。NonfairSync, FairSync.
+
+Lock接口提供的方法：
+	lock()
+	unlock()
+	tryLock()
+	newCondition()
+
+ReentrantLock加锁解锁流程：
+    	加锁：
+		先调用ReentrantLock.lock()方法，里面调用了sync.lock()方法，里面
+		if (compareAndSetState(0, 1)) {   //将AbstractQueuedSynchronizer的status属性设置为1，并将owner设置为自己
+			setOwner(当前线程) //获取成功
+		} else {
+	       	   acquire(1) //获取锁失败调用sync父类AbstractQueuedSynchronizer的acquire方法
+		}
+	
+		父类AbstractQueuedSynchronizer的acquire方法
+		if(!tryAcquire(arg)) {
+			acquireQueued(addWaiter(node))	//入队
+		}
+	
+		acquireQueued方法先判断自己的前驱节点是不是waiter队列的头元素，如果不是直接进入下一行，如果是就尝试获取锁，如果获取成功将自己变成头元素，如果失败
+		调用shouldParkAfterFailedAcquire方法，将前驱节点的waitStatus改为-1（新家进来的node的waitStatus默认是0）， 表示前驱节点有责任唤醒自己，人后park进入阻塞
+
+	解锁：
+		先调用ReentrantLock.unlock方法，里面调用sync.unlock方法，里面
+		if(tryRelease()) {	//将AbstractQueuedSynchronizer的status属性设置为0，并将owner设置为null
+			如果当前头节点不是空，且waitStatus!=0, unpark头节点的下一个节点。被唤醒的节点进入上面acuiqreQueued方法继续尝试获取锁。
+		} 

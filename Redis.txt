@@ -10,8 +10,8 @@ CAP原理（分布式系统要实现的目标）：
 
 BASE理论：
 	Basically Available: 基本可用
-	Soft state: 软状态
-	Eventually consistent: 最终一致性
+	Soft state: 软状态，可以有中间状态，如支付中，这样查询时候返回支付中系统还是可用的。
+	Eventually consistent: 最终一致性，支付完成后将订单变成成功。
 	
 	BASE是对CAP中一致性和可用性权衡的结果。源于大规模互联网系统分布式实践的结论。核心是:
 		即使无法做到强一致性（Strong Consistency）, 但每个应用可以根据自身的业务特点，采用适当的方式来使系统达到最终一致性。

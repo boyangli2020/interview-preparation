@@ -1,0 +1,26 @@
+无论是xml,注解，配置类，都是Bean的定义信息，只会获取到bean的信息后才能获取到一个具体的bean对象。
+获取到bean的信息后，需要预先把bean的定义信息加载到容器中。在Spring里面定义了一个接口叫做BeanDefinition.
+BeanFactory是一个根接口，通过这个根接口可以去访问Spring Bean容器。Spring是一个容器，想要访问这个容器，就像访问一个房间一样，必须要有一个门。这个门就是BeanFactory.
+ApplicationContext继承了BeanFactory, 只不过里面提供了一些更强大的功能。
+所以流程是BeanDefinitionReader将xml文件中的Bean定义加载到容器中后，BeanFactoryPostProceessor对现有的BeanDefinition进行加工。BeanDefinition的集合是BeanDefinitionMap。
+
+xml --> BeanDefinition --> BeanFactoryPostProcessor(替换${jdbc.username}， 各类注解)
+
+Bean的生命周期：
+	1.实例化					调用createBeanInstance方法，利用反射创建对象
+	2.设置属性					调用populateBean方法，调用set方法赋值
+	3.检查Aware相关接口，设置相关依赖		调用invokeAwareMethods方法 	BeanFactoryAware, ApplicationContextAware, EnvironmentAware
+	4.BeanPostProcessor前置处理			调用postProcessBeforeInitialzation方法
+	5.检查InitializingBean类型			调用afterPropertiesSet
+	6.检查配置的init-method			调用invokeInitMethods方法
+	7.BeanPostProcessor				调用postProcessAfterInitialization方法，这里使用动态代理实现AOP，AbstractAutoProxyCreator在前置方法中没有做任何工作，在后置方法使用jdk,cglib创建代理对象
+	8.把对象交给容器来管理			调用addSingleton方法
+	8.注册必要啊的Destruction相关回调接口
+	9.使用对象
+	10.是否实现DispoableBean方法
+	11.是否配置有自定义的destroy方法		在context.close时候执行
+
+
+BeanFactory和FactoryBean的区别：
+	BeanFactory必须遵循完整的bean的声明周期去创建对象，是一个流水线，比较复杂
+	FactoryBean 创建对象，但是没有标准的流程，继承FactoryBean<Dog>,复写isSingleton(), getObjectType(), getObject()方法

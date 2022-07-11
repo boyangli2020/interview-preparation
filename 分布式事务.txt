@@ -1,0 +1,24 @@
+2PC两阶段提交：
+	1.prepare阶段：事务管理器（TM）给每个参与者（RM 资源管理者）发送prepare消息，每个参与者在本地执行事务，并购写本地的unodo log, 此时事务没有提交。
+	2.commit阶段：事务管理器搜到参与者执行执行状态后，如果全部成功，发送commit命令，如果有一个失败，发送rollback指令。
+
+	XA方案：数据库实现DTP分布式事务处理模型，需要本地数据库支持XA协议，资源锁需要等到两阶段结束才释放，性能较差。
+	Seata实现2PC方案： 
+			1.TM, RM都向TC事务协调者进行注册。
+			2.TM先开启本地事务@GlobalTransactional (bank1的tm)，TC返回全局事务XID. 
+			3.bank1的RM向TC注册分支事务，TC返回分支事务branchid, RM写入业务数据写入undolog提交分支事务。并向TC上报分支事务处理结果。
+			4.bank1通过feign调用bank2,携带全局事务XID
+			5.bank2的RM向TC注册本地事务，TC返回分支事务branchid, bank2写入业务数据写入undolog,提交分支事务，并向TC上报分支事务处理结果。
+			6.bank1的TM下那个TC提交全局事务.
+			7.TC向bank1和bank2的RM发送提交分支事务命令，bank1,bank2的RM删除之前写入的undolog.
+			8.TC向bank1和bank2的RM发送回滚分支事务命令， bank1,bank2的RM解析undolog执行反向操作，删除Undolog, 提交本地事务，并向TC上报回滚状态。
+
+	2PC的缺点也很致命：同步阻塞，单点问题（TC挂掉），数据不一致（TC发送commit命令，不一定所有RM都执行成功），太过保守
+
+TCC(TRY CONFIRM CANCEL):
+	
+可靠性消息的最终一致性：
+	
+最大努力通知：
+	1.提供通知功能
+	2.提供查询功能

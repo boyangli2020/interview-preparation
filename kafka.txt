@@ -1,0 +1,76 @@
+kafka 每个topic 分成多个partition, 每个partition再存储层是append log文件。将一个topic数据分割多个partition进行存储。
+发送到partition的消息会被添加到Log文件的尾部，是顺序写磁盘，所以效率非常高。
+每条消息在文件中的位置成为offset偏移量。
+
+kafka提供partition级别的复制，replication. 每个partition都有一个master和多个follower.
+
+Kafka一个topic在物理层面通过Partition进行分组，一个partition还可以细分为segment,一个partition由多个segment组成。
+Kafka的log.dirs制定了消息存放的目录。如果一个主题topic_zzh_test分为四个paritition, 在指定的kafka-logs目录下就生成四个目录,
+	也就是说针对一个主题而言，一个partition一个目录：
+	topic_zzh_test-0/
+	topic_zzh_test-1/
+	topic_zzh_test-2/
+	topic_zzh_test-3/	
+如果每个parition一个文件，会使得partition文件不断扩张，这样对消息文件的维护以及对消息的清理很不方便，所以partition又细分为segment.
+每个segment文件由.index（索引）和.log文件两部分组成。每个segment文件的命名从0开始，下一个segment文件名为上一个segment文件最后一条消息的offset值。
+所以segment文件名称为offset一级索引，.index文件为二级索引。
+	topic_zzh_test-0/
+		000000000000000000000.index
+		000000000000000000000.log
+		000000000000000174632.index
+		000000000000000174632.log
+	topic_zzh_test-1/
+	topic_zzh_test-2/
+	topic_zzh_test-3/
+
+Kafka topic下面每个topic的每个partition都由N个副本replicas. 其中一个是leader, 其他是follower, follower定期复制leader上的数据，Leader宕机，follower选举产生新的leader.
+replica fator复制因子: 副本个数
+LEO: LogEndOffset, 每个partition的log最后一条message的位置。
+HW: HighWaterMark, 表示consumer可以看到此partition的位置。取一个parition对应的ISR中最小的LEO最为HW. 客户端只能访问到HW的数据。
+
+Leader负责维护ISR列表（副本同步队列），如果某个follewer复制消息过慢，将被踢出ISR列表。
+
+offset.topic.replication.factor为所有副本个数，为了可靠性，一般都设置为大于1，也就是AR.
+ISR是AR中的一个子集，leader维护ISR列表，慢的follower会被踢出ISR，存放在OSR列表中。
+AR = ISR + OSR.
+
+request.required.acks:
+	1：leader接收到，leader接收到数据即返回, leader挂了会丢失数据。
+	0：producer无序等待broker的确认继续发送下一批数据，可靠性没有保障
+	-1：producer等待ISR中所有follower都接受到数据后才算发送成功。
+
+	当request.required.acks=1时
+		如果leader刚接受到消息就挂掉，数据就丢失了。
+	当request.required.acks=-1时
+		如果leader刚接受到消息，消息还没有完全同步，leader就挂掉，返回客户端错误，客户端重试发送。
+		这时从新选举出新的Leader后，收到重发消息，消息可能会多。
+
+
+min.insync.replicas >= 2, 只有当request.required.acks为-1时，本参数才会生效。不会丢消息，但是可能会多消息。
+
+
+Kafka与RocketMQ区别：
+	RocketMQ支持同步刷盘和异步刷盘，kafka只支持异步刷盘，数据可靠性方面RocketMQ更好。
+	Kafka性能写入百万条/秒，RocketMQ7-10万条/秒。,Kafka有partition, RocketMQ只有一个Partition
+	Kafka不支持消费失败重试，RocketMQ支持消费失败重试。
+	Kafka可保证统一partition上消息有序，Rocketmq严格保证消息顺序
+	Kafka不支持定时消息，RocketMQ支持
+	Kafka不支持事务消息，RocketMQ支持事务消息
+	
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

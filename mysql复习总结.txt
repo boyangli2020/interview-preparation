@@ -201,10 +201,10 @@ autocommit=0			当前情况下事务的状态是自动开启手动提交。
 		并发新增，删除这种会产生数据量变化的操作时，另一个事务
 		前后查询相同数据时不符合预期。
 
-快照读
-当前读
+快照读  select
+当前读  update/delete/insert/ for update/ lock in sharemode
 ReadView
-Repeatable read可以解决幻读问题，但是当两次快照读间存在当前读的情况会导致幻读
+Repeatable read存在幻读问题，可以通过加间隙锁的方式解决。
 间隙锁
 
 
